@@ -1,5 +1,4 @@
-# AdminHunter
-ROTMG AdminHunter
+
 # Admin Hunter by Macky
 
 **Admin Hunter** is a Windows GUI application that monitors *Realm of the Mad God* (RotMG) for administrative presence, immediately terminates the game if an admin appears, and sends alerts via Discord webhooks.

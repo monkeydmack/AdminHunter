@@ -27,7 +27,7 @@
   pip install requests pystray pillow plyer
   ```
 - **Assets:** Place `nqtKzsh.gif` and `mGzCi6Z.gif` next to `admin_hunter.py`.
-
+- **Font:** InvisibleKiller.ttf
 ---
 
 ## ▶️ Running Locally

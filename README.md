@@ -10,7 +10,7 @@
 - **Auto-Elevation**: Prompts for UAC if not running as administrator.
 - **Dark-Themed UI**: Custom InvisibleKiller font (falls back to Helvetica), blood-red accents, animated GIF side sprites.
 - **Adjustable Polling**: Set check interval from 1 to 30 seconds with a determinate progress bar.
-- **Discord Webhook Alerts**: Send notifications to a Discord channel on hunt start and admin detection.
+- **Discord Webhook Alerts**: Send notifications to a Discord channel on hunt start and admin detection. Creates local json file when adding webhook to pull from.
 - **Desktop & Sound Alerts**: Uses `plyer` for toast notifications and `winsound` for an audible beep on detection.
 - **System Tray Integration**: Minimize to tray with `pystray`; right-click tray icon to restore or exit.
 - **Hunting Status Indicator**: Hidden until active, then shows a pulsing “Hunting: Active” label.

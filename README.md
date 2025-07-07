@@ -57,3 +57,4 @@ pyinstaller --onefile --windowed   --add-data "nqtKzsh.gif;."   --add-data "mGzC
 - Ship the single EXE—no Python install required.
 
 ---
+## EXE Included but not Recommended

@@ -53,7 +53,8 @@ CONFIG_PATH = os.path.join(SCRIPT_DIR, 'AdminHunterConfig.json')
 def load_webhook():
     try:
         with open(CONFIG_PATH) as f:
-            return json.load(f).get('webhook_url', '')
+            config = json.load(f)
+            return config.get('webhook_url', '')
     except:
         return ''
 
@@ -65,6 +66,66 @@ def save_webhook(url):
         pass
 
 target_webhook = load_webhook()
+
+# ----- Enhanced Admin Data Parsing -----
+def parse_admin_data(lines):
+    """Parse admin data from API response lines"""
+    for line in lines:
+        parts = line.split('|')
+        if len(parts) >= 9 and parts[0] in ADMIN_IDS:
+            return {
+                'player_id': parts[0],
+                'server': parts[1], 
+                'region': parts[2],
+                'time': parts[6],
+                'uuid': parts[7],
+                'value': parts[9] if len(parts) > 9 else 'N/A'
+            }
+    return None
+
+def create_admin_alert_message(admin_data):
+    """Create detailed admin alert message with Discord embed"""
+    from datetime import datetime
+    
+    embed = {
+        "title": "🚨 ADMIN DETECTED! 🚨",
+        "color": 16711680,  # Red color
+        "fields": [
+            {
+                "name": "👤 Player Info",
+                "value": f"**ID:** {admin_data['player_id']}",
+                "inline": True
+            },
+            {
+                "name": "🌍 Location",
+                "value": f"**Region:** {admin_data['server']}\n**Server:** {admin_data['region']}",
+                "inline": True
+            },
+            {
+                "name": "📊 Details",
+                "value": f"**Time:** {admin_data['time']}",
+                "inline": True
+            },
+            {
+                "name": "⚡ Action Taken",
+                "value": "🎮 **RotMG closed automatically!**\n🔄 **Continuing hunt...**",
+                "inline": False
+            }
+        ],
+        "thumbnail": {
+            "url": "https://i.imgur.com/nqtKzsh.gif"  # RotMG icon (optional)
+        },
+        "timestamp": datetime.utcnow().isoformat(),
+        "footer": {
+            "text": "Admin Hunter Alert System",
+            "icon_url": "https://i.imgur.com/nqtKzsh.gif"  # Your sprite (optional)
+        }
+    }
+    
+    return {
+        "content": "@everyone",  
+        "embeds": [embed]
+    }
 
 # ----- Animated GIF widget -----
 class AnimatedGIF(tk.Label):
@@ -137,7 +198,11 @@ def send_webhook(msg):
     global target_webhook
     if target_webhook:
         try:
-            requests.post(target_webhook, json={'content': msg}, timeout=5)
+            # Handle both simple strings and embed objects
+            if isinstance(msg, dict):
+                requests.post(target_webhook, json=msg, timeout=5)
+            else:
+                requests.post(target_webhook, json={'content': msg}, timeout=5)
         except:
             pass
 
@@ -184,7 +249,7 @@ def main():
         nonlocal ent_wh, wh_var
         target_webhook = wh_var.get().strip()
         save_webhook(target_webhook)
-        send_webhook('Webhook setup correctly! Ready to start hunting.')
+        send_webhook('🎯 **Webhook setup correctly!** Ready to start hunting.')
         wh_label.config(text='Webhook: Active', fg='#00FF00')
         log_fh.write(f"[{time.strftime('%H:%M:%S')}] Webhook configured: {target_webhook}\n")
         ent_wh.delete(0, tk.END)
@@ -205,7 +270,7 @@ def main():
 
     # Log window
     txt = scrolledtext.ScrolledText(root, state='disabled', bg='black', fg='#BBBBBB', insertbackground='#FF8888', font=('Consolas',10), height=12)
-    txt.tag_config('INFO', foreground='#BBBBBB'); txt.tag_config('WARN', foreground='#FF4444')
+    txt.tag_config('INFO', foreground='#BBBBBB'); txt.tag_config('WARN', foreground='#FF4444'); txt.tag_config('SUCCESS', foreground='#00FF00')
     txt.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0,10))
     def log(msg, level='INFO'):
         ts = time.strftime('%H:%M:%S'); entry = f'[{ts}] {msg}\n'
@@ -225,29 +290,60 @@ def main():
 
     # Monitoring logic
     stop_evt = threading.Event()
+    detection_count = 0
+    
     def start_hunt():
+        nonlocal detection_count
+        detection_count = 0
         if not hunting_status.winfo_ismapped(): hunting_status.pack(pady=(0,5))
-        send_webhook(f'Start hunting with interval {iv.get()}s')
-        log(f'Start hunting with interval {iv.get()}s')
+        send_webhook(f'🏹 **Admin hunting started!** ⏱️ Interval: {iv.get()}s')
+        log(f'Start hunting with interval {iv.get()}s', 'SUCCESS')
         hunting_status.config(text='Hunting: Active', fg='#AA0000')
         btn_start.config(state='disabled'); btn_stop.config(state='normal')
         threading.Thread(target=hunt_loop, daemon=True).start()
-    def handle_detect():
-        if hunting_status.winfo_ismapped(): hunting_status.pack_forget()
-        log('🚨 Admin spotted! Terminating RotMG.', 'WARN')
+        
+    def handle_detect(admin_data):
+        nonlocal detection_count
+        detection_count += 1
+        
+        # Keep hunting status visible and active
+        hunting_status.config(text=f'Hunting: Active (Detections: {detection_count})', fg='#FF0000')
+        
+        log(f'🚨 Admin spotted #{detection_count}! Terminating RotMG and continuing hunt...', 'WARN')
         lbl_rotmg.config(text='ADMIN SPOTTED', fg='#FF0000')
         subprocess.run(['taskkill','/F','/IM',ROTMG_EXE], check=False)
-        send_webhook('Admin Hunter: Admin detected, RotMG closed!')
-        btn_stop.config(state='disabled'); btn_start.config(state='normal')
+        
+        # Send detailed webhook alert
+        alert_msg = create_admin_alert_message(admin_data)
+        send_webhook(alert_msg)
+        
+        # Enhanced logging
+        log(f'Admin ID {admin_data["player_id"]} on {admin_data["server"]} ({admin_data["region"]}) at {admin_data["time"]}', 'WARN')
+        log(f'🔄 Continuing hunt in {iv.get()} seconds... (Total detections: {detection_count})', 'INFO')
+        
+        # Brief pause before continuing (uses same interval)
+        for i in range(iv.get(), 0, -1):
+            if stop_evt.is_set(): return
+            lbl_next.config(text=f'Resuming hunt in: {i}s')
+            time.sleep(1)
+        
+        log('🔄 Resuming hunt...', 'SUCCESS')
+        
     def hunt_loop():
         while not stop_evt.is_set():
             log('🕵️ Hunting for admins...', 'INFO')
             try:
                 r = requests.get(URL, timeout=5)
                 lines = r.json().get('value','').splitlines() if r.ok else []
-                if any(l.split('|')[0] in ADMIN_IDS for l in lines): return handle_detect()
-                else: log('No admins found.','INFO')
-            except Exception as e: log(f'Error: {e}','WARN')
+                admin_data = parse_admin_data(lines)
+                if admin_data: 
+                    handle_detect(admin_data)  # Continue hunting after detection
+                else: 
+                    log('No admins found.','INFO')
+            except Exception as e: 
+                log(f'Error: {e}','WARN')
+            
+            # Normal interval countdown
             for i in range(iv.get(), 0, -1):
                 if stop_evt.is_set(): return
                 lbl_next.config(text=f'Next hunt in: {i}s'); prog['value'] = iv.get() - i; time.sleep(1)
@@ -256,7 +352,16 @@ def main():
     # Control buttons
     btn_frame = tk.Frame(root, bg='black')
     btn_start = tk.Button(btn_frame, text='START', command=start_hunt, **cfg_btn)
-    btn_stop = tk.Button(btn_frame, text='STOP', state='disabled', command=lambda: (stop_evt.set(), hunting_status.pack_forget(), btn_stop.config(state='disabled'), btn_start.config(state='normal')), **cfg_btn)
+    def stop_hunt():
+        stop_evt.set()
+        hunting_status.pack_forget()
+        btn_stop.config(state='disabled')
+        btn_start.config(state='normal')
+        send_webhook(f'🛑 **Admin hunting stopped!** Total detections: {detection_count}')
+        log('🛑 Hunting stopped by user', 'WARN')
+        lbl_next.config(text='Hunt stopped')
+        
+    btn_stop = tk.Button(btn_frame, text='STOP', state='disabled', command=stop_hunt, **cfg_btn)
     btn_exit = tk.Button(btn_frame, text='EXIT', command=lambda: sys.exit(0), **cfg_btn)
     btn_start.pack(side=tk.LEFT, padx=5); btn_stop.pack(side=tk.LEFT, padx=5); btn_exit.pack(side=tk.LEFT, padx=5)
     btn_frame.pack(pady=10)
@@ -264,7 +369,9 @@ def main():
     # RotMG status update
     def update_status():
         running = is_rotmg_running()
-        lbl_rotmg.config(text='RotMG: RUNNING' if running else 'RotMG: NOT RUNNING', fg='#00FF00' if running else '#FF0000')
+        # Only update if not currently showing "ADMIN SPOTTED"
+        if lbl_rotmg.cget('text') != 'ADMIN SPOTTED':
+            lbl_rotmg.config(text='RotMG: RUNNING' if running else 'RotMG: NOT RUNNING', fg='#00FF00' if running else '#FF0000')
         root.after(2000, update_status)
     root.after(1000, update_status)
 
